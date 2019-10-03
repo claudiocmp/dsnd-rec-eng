@@ -1,6 +1,7 @@
 import json
 import plotly
 import pandas as pd
+import numpy as np
 
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
@@ -43,6 +44,43 @@ def index():
     genre_counts = df.groupby('genre').count()['message']
     genre_names = list(genre_counts.index)
     
+    # 2
+    msg_len_df = pd.DataFrame(df['message'].apply(len))
+    msg_len = msg_len_df.values
+    l_min,l_max = min(msg_len), max(msg_len)
+
+    def tukey_rule(df, col_name):
+        mean = df[col_name].mean()
+        Q1 = df[col_name].quantile(0.25)
+        Q3 = df[col_name].quantile(0.75)
+        IQR = 1.5*(Q3-Q1)
+        v_min = Q1 - IQR
+        v_max = Q3 + IQR
+        return df[(df[col_name]>v_min)&(df[col_name]<v_max)]
+        
+    cleaned = tukey_rule(msg_len_df,'message')['message'].values
+    l_min,l_max = min(cleaned), max(cleaned)
+
+    bins = 10
+    step = (l_max-l_min)/bins
+    thshds = np.arange(l_min,l_max+step,step)
+    intervals = {i:[a,b] for i,(a,b) in enumerate(zip(thshds[:-1],thshds[1:]))}
+    lengths = []
+    for i,iv in intervals.items():
+        l = len(np.where(np.logical_and(cleaned>iv[0],cleaned<=iv[1]))[0])
+        if i==0:
+            l+=1
+        lengths.append(l)
+    
+    iv_names = [str(v)[1:-1] for v in intervals.values()]
+    
+    # 3
+    categories = list(set(df.columns) - set(['id', 'message', 'original', 'genre']))
+    qty=[]
+    for col in categories:
+        qty.append(df[col].sum())
+    s = sorted(zip(categories,qty), key=lambda x:x[1], reverse=True)
+    categories,qty = zip(*s)
     # create visuals
     # TODO: Below is an example - modify to create your own visuals
     graphs = [
@@ -61,6 +99,41 @@ def index():
                 },
                 'xaxis': {
                     'title': "Genre"
+                }
+            }
+        },
+        {
+            'data':[
+                Bar(
+                    x=iv_names,
+                    y=lengths
+                )
+            ],
+            'layout':{
+                'title': 'Distribution of message lengths',
+                'yaxis':{
+                    'title':'Count'
+                },
+                'xaxis':{
+                    'title':'Message length (chars)'
+                }
+            }
+        },
+        {
+            'data':[
+                Bar(
+                    y=categories,
+                    x=qty,
+                    orientation='h'
+                )
+            ],
+            'layout':{
+                'title': 'Messages per Category',
+                'yaxis':{
+                    'title':'Categories'
+                },
+                'xaxis':{
+                    'title':'Count'
                 }
             }
         }
